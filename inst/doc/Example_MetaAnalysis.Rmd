@@ -1,0 +1,106 @@
+---
+title: "Example_MetaAnalysis"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Example_MetaAnalysis}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+  
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>"
+)
+knitr::opts_chunk$set(fig.width=10, fig.height=6) 
+
+
+```
+
+```{r setup}
+library(bayesMetaintegrator)
+#load practice data 
+data("test_discovery")
+```
+
+# Step 0: Data Loading + Pre-processing
+To get data to work with, we need to create a MetaIntegrator object. Details on how to create a MetaIntegrator object can be found in the [MetaIntegrator vignette](https://cran.r-project.org/web/packages/MetaIntegrator/vignettes/MetaIntegrator.html#performing-a-meta-analysis-using-the-metaintegrator-package). For this vignette, we will be using a pre-processed MetaIntegrator object.
+
+First, we need to make sure we are working with a valid MetaIntegrator object with multiple datasets. To check this, we can use the checkDataset() function from MetaIntegrator.
+```{r}
+library(MetaIntegrator)
+MetaIntegrator::checkDataObject(test_discovery, "Meta", "Pre-Analysis")
+```
+
+## Step 1: Probe to Gene Mapping
+Next, for Bayesian meta-analysis, we need to map the probes to the genes. This is done by taking an average level of all the probes for a single gene. This function takes in the MetaIntegrator object and the list of genes we are interested in and converts probes to gene levels within each dataset by taking an average across probes. The results are saved in a new section of the MetaIntegrator object `bayesianMeta`.  
+Note: You do need EXPR, CLASSES, PROBES, KEYS for this to run for each dataset.  
+**Outputs:**  
+`discovery$bayesianMeta$originalData$...$gene_expr`: A data.frame with genes as rows and samples as columns and their mean probe level as values.
+```{r}
+geneSubsetList <- c("BRCA1", "TBC1D2", "POSTN", "SERPINB2", "PRR4", "CEACAM5", "KRT6A", "SCGB3A1", "C3", "MUC5B", "VEGFA", "SLC6A4", "FANCI")
+test_discovery <- probeToGene(test_discovery, geneSubsetList)
+```
+
+## Step 2: Single Dataset Analysis using BEST
+Now we get the effect size distribution for each gene in each dataset. This is with the `getDatasetEffectSizes` function. There are a few parameters for this function:  
+1) *steps* - the number of steps to run MCMC for each gene.  
+2) *burnInSteps* - Number of steps for burn in.  
+3) *cores* -  Number of cores to use.  
+Following this, we can filter the *Rhats* (convergence criteria). The default Rhat filter is 1.1 - however, this can be decreased or increased. If many genes have a high Rhat, consider running the meta-analysis with more steps and more burn-in - this should help the model converge.  
+**Outputs**:  
+`discovery$bayesianMeta$datasetResults`: A data.frame in long format which has the genes, effect size and std. dev. for each gene. We will use this to run the combined meta-analysis.
+```{r}
+test_discovery <- getDatasetEffectSizes(discovery = test_discovery, cores = 2, steps = 2000)
+test_discovery <- filterRhat(test_discovery)
+head(test_discovery$bayesianMeta$datasetResults)
+```
+
+## Step 3: Run Meta-Analysis using hierarchical model
+This step combines the distributions across studies to create a single pooled effect size distribution.  
+There are a few parameters for this function:  
+1) *Steps* - the number of steps to run MCMC for each gene.  
+2) *burnInSteps* - Number of steps for burn in.  
+3) *definedModel* - this can be a user supplied JAGs model for the pooling step.  
+**Outputs**:  
+`discovery$bayesianMeta$finalResults`: A data.frame that contains the gene, final effect size/std.dev, tau/std.dev and probability of the gene's ES being zero/opposite sign, as well as the convergence estimates for the mean and standard deviation (want this to be near 1 and not over 1.1).  
+`discovery$bayesianMeta$pooledResultsDetailed`: A list of data.frames (by gene) that contains detailed results from the pooling step. This includes adjusted effect size estimates, rHats, etc.
+```{r}
+test_discovery <- combineDatasets(discovery = test_discovery, steps = 5000, burnIn = 1000)
+head(test_discovery$bayesianMeta$finalResults)
+```
+
+For debugging the underlying model, we can plot traces to see if there are any convergence issues. This can be done by using the `getCombiningModel` and `getCombineTrace` functions.
+```{r}
+#this function returns the JAGs model for the hierarchical model
+model <- getCombiningModel(discovery = test_discovery, gene = "BRCA1", steps = 5000, burnIn = 1000)
+#then can plot the trace (or use other BayesPlot functions)
+getCombineTrace(model, parameters = c("MU", "tau"), trace = TRUE)
+```
+
+# Step 4: Filter + Vizualize
+## filterGenes
+This function takes makes a MetaIntegrator Filter object, which can then be used with the various MetaIntegrator [visualization](https://cran.r-project.org/web/packages/MetaIntegrator/vignettes/MetaIntegrator.html#visualization-functions), [validation](https://cran.r-project.org/web/packages/MetaIntegrator/vignettes/MetaIntegrator.html#validation-functions) and [search](https://cran.r-project.org/web/packages/MetaIntegrator/vignettes/MetaIntegrator.html#search-functions) functions.  
+Here, we create a filter and then see how well the filter performs seperating classes in the studies.  
+
+**Arguments:**  
+`discovery`: this is the meta-integrator object we are operating on, post combineDatasets.  
+`probabilityThresh`: We will filter down the genes based on probability their effect size = 0. A lower probability is optimal [upper bound].  
+`effectSizeThresh`: We will filter down the genes based on effect size point estimate (higher is better) [lower bound].   
+`numberStudiesThresh`: We will filter down the genes based on number of studies [lower bound].  
+**Outputs:**   
+`discovery$filterResults`: All filter objects that you can use with MetaIntegrator's built in functions will be stored here.
+```{r}
+test_discovery <- bayesMetaintegrator::filterGenes(test_discovery, probabilityThresh = .05, effectSizeThresh = .5, numberStudiesThresh = 2)
+
+#and now run the MetaIntegrator functions with the resulting filter objects.
+MetaIntegrator::multipleROCPlot(test_discovery, test_discovery$filterResults$bayesian_PR_0.05ES_0.5nStudies_2)
+```
+
+## Forest Plots
+Some functions do slightly differ, however from the MetaIntegrator functions. One such function is the `forestPlot` function in MetaIntegrator, which is replaced with the `makeBayesianForestPlot` function in bayesMetaIntegrator. 
+```{r}
+testPlot <- makeBayesianForestPlot(test_discovery, "BRCA1", plotType = "frequentist")
+```
+
