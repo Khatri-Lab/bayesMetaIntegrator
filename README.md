@@ -1,7 +1,7 @@
 # bayesMetaIntegrator
 By: Laurynas Kalesinskas
 
-Bayesian Meta-Analysis for Gene Expression Data.   
+## Bayesian Meta-Analysis for Gene Expression Data
 The method is described in [LINK](). It was originally developed for gene expression data, but can be adapted for any type of high dimensional meta-analysis.
 
 ## Installation
