@@ -1,0 +1,150 @@
+---
+title: "Sensitivity"
+output: html_document
+---
+
+```{r}
+library(tidyverse)
+library(nVennR)
+library(cowplot)
+library(ggrastr)
+library(patchwork)
+library(MASS)
+```
+
+```{r cars}
+metaSignature <- read.csv("./Pooled.csv")
+datasets <- read.csv("./query_result.csv")
+colnames(datasets) <- c("count", "diseaseName")
+```
+
+```{r}
+resultFrame <- data.frame()
+for(disease in unique(metaSignature$diseaseName)) {
+  diseaseSubset <- metaSignature %>% filter(diseaseName == disease)
+  meanValue <- as.numeric(fitdistr(diseaseSubset$mean, densfun="normal")$estimate[["mean"]])
+  sdValue <- as.numeric(fitdistr(diseaseSubset$mean, densfun="normal")$estimate[["sd"]])
+  resultFrame <- rbind(resultFrame, data.frame(disease = disease, mean = meanValue, sd = sdValue))
+}
+```
+
+
+```{r}
+metaSignature <- left_join(metaSignature, datasets, by = c("diseaseName"))
+
+metaSignature <- metaSignature %>% mutate(count = ifelse(count <= 10 & count > 6, 6,  count))
+  metaSignature <- metaSignature %>% mutate(count = ifelse(count <= 15 & count > 11, 11, count))
+  metaSignature <- metaSignature %>% mutate(count = ifelse(count <= 20 & count > 15, NA,  count))
+  metaSignature <- metaSignature %>% mutate(count = ifelse(count >= 20, 20,  count))
+metaSignature <- metaSignature %>% filter(!is.na(count)) %>% filter(count > 1)
+  metaSignature$count <- as.factor(metaSignature$count)
+metaSignatureMeanPooled <- ggplot(metaSignature, aes(x = mean, group = count, color = count)) + 
+  geom_density(alpha = 1) + 
+  xlim(-5, 5) +
+  stat_function(fun = dnorm, args = list(mean = 0, sd = 3), color = "red", size = 1) +
+  xlab("ES - 122 Meta-Analyses") +
+  ylab("Density") +
+  ggtitle("ES - MetaSignature") +
+  theme_cowplot() +
+  guides(fill=guide_legend(color="Number of Datasets"))
+
+metaSignatureTau <- ggplot(metaSignature, aes(x = stDev, group = count, color = count)) + 
+  geom_density(alpha = 1) + 
+  xlim(0, 2) +
+  xlab("Tau - 122 Meta-Analyses") +
+  stat_function(fun = dunif, args = list(min = 0, max = 2), color = "red", size = 1) +
+  ylab("Density") +
+  ggtitle("Tau - MetaSignature") +
+  theme_cowplot() +
+  guides(fill=guide_legend(color="Number of Datasets"))
+
+```
+
+
+
+```{r}
+Asthma_norm2 <- readRDS("./Asthma_norm2.RDS")
+Asthma_baseline <- readRDS("./Asthma_Baseline.RDS")
+Asthma_norm4 <- readRDS("./Asthma_norm4.RDS")
+
+mean2 <- Asthma_norm2$bayesianMeta$finalResults %>% dplyr::select(Gene, Pr0)
+mean3 <- Asthma_baseline$bayesianMeta$finalResults %>% dplyr::select(Gene, Pr0)
+mean4 <- Asthma_norm4$bayesianMeta$finalResults %>% dplyr::select(Gene, Pr0)
+totalMean23 <- left_join(mean2, mean3, by = c("Gene"))
+totalMean23plot <- ggplot(totalMean23, aes(Pr0.x, Pr0.y)) +
+  geom_point_rast(size = .5, raster.dpi = getOption("ggrastr.default.dpi", 100)) +
+  xlab("ES = Normal(0, 2)") +
+  ylab("ES = Normal(0, 3)") + 
+  theme_cowplot() +
+  theme(aspect.ratio = 1) +
+  ggtitle("ES Prior Width") +
+  geom_abline(slope=1, intercept=0, color = "red", linetype="dashed")
+
+totalMean34 <- left_join(mean3, mean4, by = c("Gene"))
+totalMean34plot <- ggplot(totalMean34, aes(Pr0.x, Pr0.y)) +
+  geom_point_rast(size = .5, raster.dpi = getOption("ggrastr.default.dpi", 100)) +
+  xlab("ES = Normal(0, 3)") +
+  ylab("ES = Normal(0, 4)") + 
+  theme_cowplot() +
+  theme(aspect.ratio = 1) +
+  ggtitle("ES Prior Width") +
+  geom_abline(slope=1, intercept=0, color = "red", linetype="dashed")
+
+```
+
+
+```{r}
+Asthma_tau1 <- readRDS("./Asthma_tau1.RDS")
+Asthma_baseline <- readRDS("./Asthma_Baseline.RDS")
+Asthma_tau3 <- readRDS("./Asthma_tau3.RDS")
+
+tau1 <- Asthma_tau1$bayesianMeta$finalResults %>% dplyr::select(Gene, Pr0)
+tau2 <- Asthma_baseline$bayesianMeta$finalResults %>% dplyr::select(Gene, Pr0)
+tau3 <- Asthma_tau3$bayesianMeta$finalResults %>% dplyr::select(Gene, Pr0)
+totalTau12 <- left_join(tau1, tau2, by = c("Gene"))
+totalTau12plot <- ggplot(totalTau12, aes(Pr0.x, Pr0.y)) +
+  geom_point_rast(size = .5, raster.dpi = getOption("ggrastr.default.dpi", 100)) +
+  xlab("Tau = Uniform(0, 1)") +
+  ylab("Tau = Uniform(0, 2)") + 
+  theme_cowplot() +
+  theme(aspect.ratio = 1) +
+  ggtitle("Tau Prior Width") +
+  geom_abline(slope=1, intercept=0, color = "red", linetype="dashed")
+
+totalTau23 <- left_join(tau2, tau3, by = c("Gene"))
+totalTau23plot <-ggplot(totalTau23, aes(Pr0.x, Pr0.y)) +
+  #geom_point_rast(size = .5, raster.dpi = getOption("ggrastr.default.dpi", 100)) +
+  geom_hex(bins = 30) + 
+  xlab("Tau = Uniform(0, 2)") +
+  ylab("Tau = Uniform(0, 3)") + 
+  theme_cowplot() +
+  theme(aspect.ratio = 1) +
+  ggtitle("Tau Prior Width") +
+  geom_abline(slope=1, intercept=0, color = "red", linetype="dashed")
+
+```
+
+
+```{r}
+(metaSignatureMeanPooled + metaSignatureTau) / (totalMean23plot + totalMean34plot) / (totalTau12plot + totalTau23plot)
+ggsave("SensitivityPlot.pdf", height = 12, width = 8)
+```
+
+```{r}
+top100Genes <- list()
+top100Genes$mean2 <- as.vector(Asthma_norm2$bayesianMeta$finalResults$Gene[1:100])
+top100Genes$mean3 <- as.vector(Asthma_baseline$bayesianMeta$finalResults$Gene[1:100])
+top100Genes$mean4 <- as.vector(Asthma_norm4$bayesianMeta$finalResults$Gene[1:100])
+library(VennDiagram)
+temp <- venn.diagram(
+  x = top100Genes,
+  category.names = c("Mean = 2" , "Mean = 3 " , "Mean = 4"),
+  filename = 'Venn_mean.tiff',
+  output=TRUE
+)
+library(grDevices)
+pdf(file="Venn_mean.pdf")
+    grid.draw(temp)
+dev.off()
+
+```

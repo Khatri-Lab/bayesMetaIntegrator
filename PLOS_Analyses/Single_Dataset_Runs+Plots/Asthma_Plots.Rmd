@@ -1,0 +1,425 @@
+---
+title: "AsthmaFigures_SlideDeck"
+output: html_document
+---
+```{r}
+source("./paperFunctions.R")
+library(MetaIntegrator)
+library(bayesMetaintegrator)
+library(ggrastr)
+library(pals)
+library(scales)
+library(cowplot)
+```
+
+
+```{r}
+sizeVar = 1
+opSetting = .1
+#variables to run -
+#first - input dataset
+discovery <- readRDS("./AsthmaFullRun.RDS")
+#second - specify output for figures
+rootPath = "./Asthma_Complete/"
+nStudiesThresh = ceiling(length(discovery$originalData)/2)
+```
+
+```{r}
+testPCA <- discovery$bayesianMeta$originalData$GSE64913$gene_expr
+testPCA$gene <- NULL
+res.pca <- prcomp(t(testPCA), scale = F)
+fviz_pca_ind(res.pca, repel = TRUE) + theme_cowplot()
+ggsave("./Asthma_PCA.pdf", height = 10, width = 10)
+```
+
+#First, get overall effect size correlation figure
+```{r}
+getESCorrelation <- function(metaobject, FDR, studies, n = 0){
+  #filter down the regular meta-integrator and sort by effect size
+  regular <- metaobject$metaAnalysis$pooledResults %>%
+    filter(numStudies >= studies) %>%
+    filter(effectSizeFDR < FDR) %>%
+    arrange(desc(abs(effectSize)))
+  regular$Gene <- rownames(regular)
+  if (n!=0) {
+    regular <- regular[1:n,]
+  }
+
+  #filter down bayesian meta-integrator - sort by Pr0
+  bayesian <- metaobject$bayesianMeta$finalResults %>%
+    arrange(abs(Pr0))
+
+  #join the two together - left_join
+  combined <- left_join(regular, bayesian, by = "Gene")
+  combined <- combined[complete.cases(combined),]
+  return(combined)
+}
+
+test <- getESCorrelation(discovery, 1, 2)
+overallES <- ggplot(test, aes(effectSize, ES)) + geom_hex(bins = 30) + 
+  scale_fill_gradientn(colors = ocean.haline(100)) +
+  geom_smooth(color = "red", method = lm, se = FALSE) +
+  theme_cowplot() + 
+  ylab("Bayesian Effect Size") + 
+  xlab("MetaIntegrator Effect Size") +
+  ggtitle("Effect Size Correlation")
+ggsave("./Asthma_Final_Figures/Overall_ES.pdf")
+```
+
+#Now, get the two dataset figures
+```{r}
+genes <- as.vector((discovery$bayesianMeta$datasetEffectSizes %>% filter(nStudies > nStudiesThresh))$Gene)
+
+regularDatasetResults <- as.data.frame(discovery$metaAnalysis$datasetEffectSizes) %>% 
+  rownames_to_column(var = "Gene") %>% 
+  pivot_longer(cols = starts_with("GSE"), names_to = "dataset", values_to = "MetaIntegratorES") %>% 
+  filter(Gene %in% genes)
+
+bayesianDatasetResults <- as.data.frame(discovery$bayesianMeta$datasetEffectSizes) %>% 
+  dplyr::select(-nStudies) %>% 
+  pivot_longer(cols = starts_with("GSE"), names_to = "dataset", values_to = "BayesianES") %>% 
+  filter(Gene %in% genes)
+
+joinedResults <- left_join(regularDatasetResults, bayesianDatasetResults, by = c("Gene", "dataset"))
+datasetList <- c("GSE18965", "GSE64913")
+
+#First one
+dataset1 <- joinedResults %>% filter(dataset == "GSE18965")
+GSE18965 <- ggplot(dataset1, aes(MetaIntegratorES, BayesianES)) + geom_point_rast(size = sizeVar/2, alpha = opSetting, color = "grey10") + 
+  geom_smooth(color = "red", size = 0.5) + 
+  theme_cowplot() + 
+  ggtitle("GSE18965") + 
+  theme(axis.title.x=element_blank()) +
+  theme(axis.title.y=element_blank()) +
+  geom_abline(intercept = 0, slope = 1, size = 0.5, linetype = "dashed", color = "black") 
+  
+
+ggsave("./Asthma_Final_Figures/ES_GSE18965.pdf")
+
+dataset2 <- joinedResults %>% filter(dataset == "GSE64913")
+GSE64913 <- ggplot(dataset2, aes(MetaIntegratorES, BayesianES)) + geom_point_rast(size = sizeVar/2, alpha = opSetting, color = "grey10") + 
+  geom_smooth(color = "red", size = 0.5) +
+  theme_cowplot() + 
+  ggtitle("GSE64913") + 
+  theme(axis.title.x=element_blank()) +
+  theme(axis.title.y=element_blank()) +
+    geom_abline(intercept = 0, slope = 1, size = 0.5, linetype = "dashed", color = "black") 
+ggsave("./Asthma_Final_Figures/ES_GSE64913.pdf")
+```
+
+
+```{r}
+getTauCorrelation <- function(metaobject, studies, n = 0){
+  #filter down the regular meta-integrator and sort by effect size
+  regular <- metaobject$metaAnalysis$pooledResults %>%
+    filter(numStudies >= studies) %>%
+    arrange(desc(abs(effectSize)))
+  regular$Gene <- rownames(regular)
+  if (n!=0) {
+    regular <- regular[1:n,]
+  }
+
+  #filter down bayesian meta-integrator - sort by Pr0
+  bayesian <- metaobject$bayesianMeta$finalResults %>%
+    arrange(abs(Pr0))
+
+  #join the two together - left_join
+  combined <- left_join(regular, bayesian, by = "Gene")
+  combined <- combined[complete.cases(combined),]
+  combined$Tau <- combined$Tau^2
+  return(combined)
+}
+tauFrame <- getTauCorrelation(discovery, 2)
+overallTau <- ggplot(tauFrame, aes(tauSquared, Tau)) + geom_hex(bins = 50) + 
+  scale_fill_gradientn(colors = ocean.haline(100))+
+  geom_smooth(color = "red", method = lm, se = FALSE) +
+  theme_cowplot() + 
+  xlim(0,2) +
+  ylim(0,2) +
+  ylab("Bayesian Tau^2") + 
+  xlab("MetaIntegrator Tau^2") +
+  ggtitle("Tau Correlation") +
+  geom_abline(intercept = 0, slope = 1, size = 0.5, linetype = "dashed") 
+
+ggsave("./Asthma_Final_Figures/Overall_Tau.pdf", overallTau)
+```
+
+#patch
+```{r}
+library(patchwork)
+topPatch <- (overallES) + (GSE18965 / GSE64913)  + overallTau + plot_layout(widths = c(1, .5, 1))
+ggsave("./Asthma_Final_Figures/topPatch.pdf", width = 16, height = 8)
+```
+
+#Get Bayesian Probability/FDR Plot - .2
+```{r}
+#False Negative False Positive         Normal 
+#           235            337            545 
+
+pFrame <- getPCorrelation(discovery, FDR = .2, studies = nStudiesThresh)
+pFrame <- pFrame %>% filter(!(effectSizeFDR > .1 & Pr0 > .1))
+pFrame <- pFrame %>% mutate(grouping = ifelse(effectSizeFDR < .1 & Pr0 > .1, "False Positive", "Normal"))
+pFrame <- pFrame %>% mutate(grouping = ifelse(effectSizeFDR > .1 & Pr0 < .1, "False Negative", grouping))
+overallProbability <- ggplot(pFrame, aes(effectSizeFDR, Pr0, color = grouping)) + geom_point_rast(size = sizeVar) + 
+  theme_cowplot() + 
+  ylab("Bayesian Probability") + 
+  xlab("MetaIntegrator FDR") +
+  ggtitle("Probability Correlation") +
+  scale_color_manual(values=c("blue", "red", "grey50")) +
+  theme(legend.position = "none")
+  
+ggsave("./Asthma_Final_Figures/Overall_Probability.pdf")
+```
+
+
+```{r}
+topPatch / (overallProbability + plot_spacer()) 
+ggsave("./Asthma_Final_Figures/topMiddlePatch.pdf", width = 12, height = 10)
+
+```
+#Now, do Bayesian Plots
+```{r}
+pdf("./Asthma_Final_Figures/ForestPlots.pdf", height = 10, width = 10)
+par(mfrow=c(2,2))
+MetaIntegrator::forestPlot(discovery, "SLC6A4", textColor = "black")
+bayesMetaintegrator::makeBayesianForestPlot(discovery, "SLC6A4", plotType = 0)
+ggsave("./testPlot.pdf", width = 10, height = 10)
+
+MetaIntegrator::forestPlot(discovery, "FANCI", textColor = "black")
+bayesMetaintegrator::makeBayesianForestPlot(discovery, "FANCI", plotType = 0)
+dev.off()
+```
+
+```{r}
+library(scales)
+squish_trans <- function(from, to, factor) {
+  
+  trans <- function(x) {
+    
+    if (any(is.na(x))) return(x)
+
+    # get indices for the relevant regions
+    isq <- x > from & x < to
+    ito <- x >= to
+    
+    # apply transformation
+    x[isq] <- from + (x[isq] - from)/factor
+    x[ito] <- from + (to - from)/factor + (x[ito] - to)
+    
+    return(x)
+  }
+
+  inv <- function(x) {
+    
+    if (any(is.na(x))) return(x)
+
+    # get indices for the relevant regions
+    isq <- x > from & x < from + (to - from)/factor
+    ito <- x >= from + (to - from)/factor
+    
+    # apply transformation
+    x[isq] <- from + (x[isq] - from) * factor
+    x[ito] <- to + (x[ito] - (from + (to - from)/factor))
+    
+    return(x)
+  }
+  
+  # return the transformation
+  return(trans_new("squished", trans, inv))
+}
+```
+
+##Now, add violins
+```{r}
+FANCI <- getHealthyDiseaseGeneData(discovery$bayesianMeta$originalData$GSE18965, "FANCI")
+FANCIplot <- ggplot(FANCI, aes(status, value)) +
+  geom_beeswarm_rast(size = 1, color = "blue") + 
+  theme_cowplot() +
+  ylab("log2(Expression)")+
+  xlab("Disease State") +
+  ggtitle("FANCI") +
+  scale_y_continuous(trans = squish_trans(3, 4.2, 4), breaks = seq(2.8, 4.2, by = .2))
+  
+FANCIplot
+```
+
+```{r}
+SLC6A4 <- getHealthyDiseaseGeneData(discovery$bayesianMeta$originalData$GSE64913, "SLC6A4")
+SLC6A4plot <- ggplot(SLC6A4, aes(status, value)) +
+  geom_beeswarm_rast(size = 1, color = "red") + 
+  theme_cowplot() +
+  ylab("log2(Expression)")+
+  xlab("Disease State") +
+  ggtitle("SLC6A4") +
+  scale_y_continuous(trans = squish_trans(2.4, 3, 5), breaks = seq(2.3, 3, by = .1))
+
+```
+
+```{r}
+topPatch / (overallProbability + plot_spacer() + (SLC6A4plot / FANCIplot) + plot_layout(widths = c(1, 1, .5)))
+ggsave("./Asthma_Final_Figures/topMiddlePatch.pdf", width = 12, height = 10)
+
+```
+
+
+## Gene Signature Figure!
+#get signature ROC based on FDR
+```{r}
+library(tidyverse)
+metaobject <- discovery
+nVector <- seq(from = 20, to = 200, by = 5)
+nVector <- c(seq(from = 5, 20, by = 5), nVector)
+bayesian <- ROCtuneBayesian(metaobject, nVector, nStudiesThresh)
+regular <- ROCtuneFDR(metaobject, nVector, .05, nStudiesThresh)
+rocDataframe <- rbind(bayesian, regular)
+rocDataframe <- rocDataframe %>% filter(!is.na(dataset))
+
+combinedFrame <- weightedAUC(discovery, rocDataframe) 
+AUCPlot <- 
+  ggplot(data = combinedFrame, aes(x=n, y=finalAUC, linetype=analysis, color=analysis)) +
+ geom_line() +
+ theme_cowplot() +
+ xlab("Number of Genes") +
+ ylab("Weighted AUC") +
+ ggtitle("AUC - MetaIntegrator/Bayesian") +
+ theme(legend.position=c(.7,.15)) +
+ ylim(.80, .95)
+AUCPlot
+```
+
+#get Jaccard plot - order by FDR
+```{r}
+jaccardSimilarity <- getJaccardPlot_FDROrder(discovery, .05, nStudiesThresh, seq(10, 500, by = 10))
+ggsave("./Asthma_Final_Figures/Jaccard500.pdf", width = 16, height = 8)
+```
+
+#ReactomePA 
+```{r}
+library(ReactomePA)
+library(clusterProfiler)
+library(biomaRt)
+nGenes = 1000
+regular <- discovery$metaAnalysis$pooledResults %>%
+  filter(numStudies >= 2) %>%
+  arrange((abs(effectSizeFDR)))
+
+#filter down bayesian meta-integrator - sort by Pr0
+bayesian <- discovery$bayesianMeta$finalResults %>%
+  arrange(abs(Pr0))
+
+regularGenes <- rownames(regular[1:nGenes,])
+bayesianGenes <- bayesian[1:nGenes,]$Gene
+
+ensembl <- useEnsembl(biomart = "ensembl", dataset= "hsapiens_gene_ensembl")
+bayesianGenesEnsembl <- getBM(
+  attributes=c("hgnc_symbol","entrezgene_id"),
+  filters = "hgnc_symbol",
+  values = bayesianGenes,
+  mart = ensembl)
+head(bayesianGenesEnsembl)
+
+metaintegratorGenesEnsembl <- getBM(
+  attributes=c("hgnc_symbol","entrezgene_id"),
+  filters = "hgnc_symbol",
+  values = regularGenes,
+  mart = ensembl)
+head(metaintegratorGenesEnsembl)
+
+gcSample <- list()
+gcSample$Bayesian <- as.character(bayesianGenesEnsembl$entrezgene_id)
+gcSample$Bayesian <- gcSample$Bayesian[!is.na(gcSample$Bayesian)]
+gcSample$MetaIntegrator <- as.character(metaintegratorGenesEnsembl$entrezgene_id)
+gcSample$MetaIntegrator <- gcSample$MetaIntegrator[!is.na(gcSample$MetaIntegrator)]
+
+filename = paste0(rootPath, "combinedPathway.pdf")
+pdf(filename, height = 10, width = 10)
+ck <- compareCluster(geneCluster = gcSample, fun = "enrichPathway", pvalueCutoff = .2, minGSSize = 10)
+differenceDot <- dotplot(ck)
+dev.off()
+```
+
+#figure out pathway analysis here
+```{r}
+library(ReactomePA)
+library(biomaRt)
+nGenes = 500
+regular <- discovery$metaAnalysis$pooledResults %>%
+  filter(numStudies >= 2) %>%
+  arrange((abs(effectSizeFDR)))
+
+#filter down bayesian meta-integrator - sort by Pr0
+bayesian <- discovery$bayesianMeta$finalResults %>%
+  arrange(abs(Pr0))
+
+regularGenes <- rownames(regular[1:nGenes,])
+bayesianGenes <- bayesian[1:nGenes,]$Gene
+
+ensembl <- useEnsembl(biomart = "ensembl", dataset= "hsapiens_gene_ensembl")
+genes <- getBM(
+  attributes=c("hgnc_symbol","entrezgene_id"),
+  filters = "hgnc_symbol",
+  values = bayesianGenes,
+  mart = ensembl)
+
+bayesianPathwayResults <- enrichPathway(gene=genes$entrezgene_id,
+                   pvalueCutoff = .2, minGSSize = 10)
+filename = paste0(rootPath, "bayesianPathway.pdf")
+pdf(filename, height = 10, width = 6)
+bayesianPathway = dotplot(bayesianPathwayResults, showCategory=15) + theme_cowplot() + theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+dev.off()
+
+library(biomaRt)
+ensembl <- useEnsembl(biomart = "ensembl", dataset= "hsapiens_gene_ensembl")
+genes <- getBM(
+  attributes=c("hgnc_symbol","entrezgene_id"),
+  filters = "hgnc_symbol",
+  values = regularGenes,
+  mart = ensembl)
+
+classicalPathwayResults <- enrichPathway(gene=genes$entrezgene_id,
+                   pvalueCutoff = .2, minGSSize = 10)
+filename = paste0(rootPath, "classicalPathway.pdf")
+
+pdf(filename, height = 10, width = 10)
+MetaIntegratorPathway = dotplot(classicalPathwayResults, showCategory=15) + theme_cowplot() + theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) 
+dev.off()
+bayesianPathway + MetaIntegratorPathway
+ggsave("./Asthma_Final_Figures/pathway_with_legend.pdf", height = 4, width = 18)
+
+MetaIntegratorPathway <- MetaIntegratorPathway + theme(legend.position = "none") + xlab("Gene Ratio") + theme(axis.text = element_text(size = 10)) +  ggtitle("MetaIntegrator Pathway Analysis")
+bayesianPathway <- bayesianPathway + theme(legend.position = "none") + xlab("Gene Ratio") + theme(axis.text = element_text(size = 10)) + ggtitle("Bayesian Pathway Analysis")
+
+```
+
+```{r}
+bayesianFiltered <- bayesianPathwayResults@result %>% filter(qvalue < bayesianPathwayResults@qvalueCutoff) %>% dplyr::select(Description, qvalue)
+bayesianFiltered$analysis <- "BMI"
+
+classicalFiltered <- classicalPathwayResults@result %>% filter(qvalue < classicalPathwayResults@qvalueCutoff) %>% dplyr::select(Description, qvalue)
+classicalFiltered$analysis <- "CMI"
+test <- rbind(bayesianFiltered, classicalFiltered)
+
+test$Description[test$Description == "Defective GALNT3 causes familial hyperphosphatemic tumoral calcinosis (HFTC)"] <- "Defective GALNT3 causes HFTC"
+test$Description[test$Description == "Defective GALNT12 causes colorectal cancer 1 (CRCS1)"] <- "Defective GALNT3 causes CRCS1"
+test$Description[test$Description == "Defective C1GALT1C1 causes Tn polyagglutination syndrome (TNPS)"] <- "Defective C1GALT1C1 causes TNPS"
+test$Description[test$Description == "Transport of bile salts and organic acids, metal ions and amine compounds"] <- "Transport of bile salts, organic acids, metal ions, amines"
+
+
+
+combinedDot <- ggplot(test, aes(y = factor(Description),
+             x = factor(analysis))) +        ## global aes
+  #geom_tile() +         ## to get the rect filled
+  geom_point(aes(colour = qvalue, 
+                   size = qvalue))  +    ## geom_point for circle illusion
+  scale_color_gradient(low = "blue",  
+                       high = "red")+       ## color of the corresponding aes
+  scale_size(range = c(1, 5))+             ## to tune the size of circles
+  theme_cowplot() +
+  theme(legend.position = "none") +
+  xlab("Analysis") + 
+  theme(axis.title.y=element_blank())
+
+ggsave("./Asthma_Final_Figures/AsthmaPathway.pdf", height = 10, width = 10)
+
+
+```

@@ -1,0 +1,176 @@
+---
+title: "Simulation"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+library(meta)
+library(metafor)
+library(tidyverse)
+library(ggforestplot)
+library(R2jags)
+library(lattice)
+library(coda)
+
+```
+
+#function for Meta-Analysis
+```{r}
+getSimulationResults <- function(TE, seTE, studyName) {
+simulationResults = data.frame(method = character(), estimate = numeric(), lower = numeric(), upper = numeric(), p_val = numeric())
+  plotData = data.frame(name = "Data", 
+                      study = studyName, 
+                      TE = TE, 
+                      seTE = seTE,
+                      tau = 0)
+
+tauEstimates <- c("DL", "PM", "REML", "ML", "HS", "SJ", "HE", "EB")
+for(tauEstimator in tauEstimates) {
+  print(tauEstimator)
+  model <- metagen(TE,
+                    seTE,
+                    studlab = studyName,
+                    comb.fixed = FALSE,
+                    comb.random = TRUE,
+                    method.tau = tauEstimator,
+                    hakn = FALSE,
+                    prediction = TRUE,
+                    sm = "SMD")
+
+  simulationResults <- rbind(simulationResults, 
+                             data.frame(method = tauEstimator, 
+                                  estimate = model$TE.random, 
+                                  lower = model$lower.random, 
+                                  upper = model$upper.random,
+                                  p_val = model$pval.random,
+                                  tau = model$tau2))
+  text <- paste0(tauEstimator, " p:", round(model$pval.random, 3), ", tau2:", round(model$tau2, 3))
+  plotData = rbind(plotData, data.frame(name = text, study = "Meta-Analysis", TE = model$TE.random, seTE = model$seTE.random, tau = model$tau2))
+
+}
+model <- function(){
+    for(i in 1:I) { #for each study
+      y[i, 1] ~ dnorm(mu[i], pow(se[i,1], -2))   #assume study mean comes from normal with mean mu[i] and given std.dev
+      mu[i] ~ dnorm(MU, prec.mu)                 #assume mu[i] comes from overall MU and tau (in precision form)
+    }
+    MU ~ dnorm(0.0, pow(3, -2))                 #MU is distributed between -3,3 with mean 0
+    prec.mu <- pow(tau, -2)                     #Who knows where the precision is
+    tau ~ dunif(0, 2)
+  }  
+  #define parameters
+  jags.data <- list("y", "se", "I")
+  # Define parameters of interest
+  jags.params <- c("tau", "mu", "MU")
+  # Set initials
+  jags.inits <- function() {
+    list("tau"=runif(1),
+         "mu"=rnorm(I)
+    )
+  }
+y <- as.matrix(TE)
+se <- as.matrix(seTE)
+I <- length(y)
+jagsfit <- jags(data=jags.data, inits = jags.inits, jags.params, model.file = model, n.iter = 50000, progress.bar = "none", n.burnin=1000, n.thin=10,  DIC=TRUE, jags.seed = 42)
+
+  lower = jagsfit$BUGSoutput$summary["MU", "mean"] - 1.96*jagsfit$BUGSoutput$summary["MU", "sd"]
+  upper = jagsfit$BUGSoutput$summary["MU", "mean"] + 1.96*jagsfit$BUGSoutput$summary["MU", "sd"]
+  p = pnorm(0, mean=jagsfit$BUGSoutput$summary["MU", "mean"], sd=jagsfit$BUGSoutput$summary["MU", "sd"], lower.tail=TRUE)
+  tau2 = jagsfit$BUGSoutput$summary["tau", "mean"]^2
+
+  simulationResults <- rbind(simulationResults, 
+                             data.frame(method = "Bayesian", 
+                                  estimate = jagsfit$BUGSoutput$summary["MU", "mean"], 
+                                  lower = lower, 
+                                  upper = upper,
+                                  p_val = p,
+                                  tau = tau2))
+  text = paste0("Bayesian", " Pr(ES=0):", round(p, 3), ", tau2:", round(tau2, 3))
+  plotData = rbind(plotData, data.frame(name = text, study = "Meta-Analysis", TE = jagsfit$BUGSoutput$summary["MU", "mean"], seTE = jagsfit$BUGSoutput$summary["MU", "sd"], tau = tau2))
+
+return(list(simulationResults, plotData))
+}
+```
+
+```{r}
+plotFunction <- function(plotData, title = "MetaAnalysis") {
+  forestplot(
+  df = plotData,
+  estimate = TE,
+  se = seTE,
+  logodds = FALSE,
+  colour = name,
+  shape = study,
+  title = title,
+  xlab = "Effect Size"
+) +
+  ggplot2::scale_shape_manual(
+    values = c(21L, 21L, 21L, 21L, 21L, 21L),
+    labels = c("Meta-analysis", "Study 1", "Study 2", "Study 3", "Study 4", "Study 5")
+  ) + ggplot2::theme(legend.position = "none")
+
+}
+```
+
+```{r}
+plotSimulation <- function(simulationResult, filename) {
+  studyStats <- simulationResult[[2]][1:5,]
+  studyStats <-  studyStats[rev(rownames(studyStats)),]
+  studyStats$study <- c("Study 1", "Study 2", "Study 3", "Study 4", "Study 5")
+  
+  tabletext <- cbind(c("Study/", "Method", as.vector(studyStats$study), as.vector(simulationResult[[1]]$method[1:8]), NA, as.vector(simulationResult[[1]]$method[9]), NA), 
+                     c("Study", "ES", studyStats$TE, rep(NA, 11)),
+                     c("Study", "SE", studyStats$seTE, rep(NA, 11)),
+                     c("Pooled", "ES", rep(NA, 5), round(simulationResult[[1]]$estimate[1:8],3), NA, round(simulationResult[[1]]$estimate[9],3), NA), 
+                     c("Pooled", "Sig.",  rep(NA, 5), round(simulationResult[[1]]$p_val[1:8],3), NA, round(simulationResult[[1]]$p_val[9],3), NA), 
+                     c("Pooled", "Tau^2",  rep(NA, 5), round(simulationResult[[1]]$tau[1:8],3), NA, round(simulationResult[[1]]$tau[9],3), NA))
+  m <- c(NA, NA, studyStats$TE, simulationResult[[1]]$estimate[1:8], NA, simulationResult[[1]]$estimate[9])
+  l <- c(NA, NA, studyStats$TE + 1.96*studyStats$seTE, simulationResult[[1]]$lower[1:8], NA, simulationResult[[1]]$lower[9])
+  u <- c(NA, NA, studyStats$TE - 1.96*studyStats$seTE, simulationResult[[1]]$upper[1:8], NA, simulationResult[[1]]$upper[9])
+  pdf(filename, width = 10, height = 10)
+  forestplot(tabletext, m, l, u, zero = 0, is.summary = c(TRUE, TRUE, rep(FALSE, 5), rep(TRUE, 
+      8), TRUE), boxsize = .75, col = rmeta::meta.colors(box = "royalblue",
+                                                             lines = "lightblue", zero = "black", summary = "orange",
+                                                             text = "black"), xlim = c(-1,2))
+  dev.off()
+}
+```
+
+#first, create some data that's similar to NA paper
+```{r}
+TE <- c(-.5, 1.5, .6, 1.2, 2)
+seTE <- c(.5, .75, .5, 1, .5)
+studyName <- c("Study 1", "Study 2", "Study 3", "Study 4", "Study 5")
+simulationResult <- getSimulationResults(TE, seTE, studyName)
+plotSimulation(simulationResult, "./originalMeta.pdf")
+```
+
+
+#high effect
+```{r}
+TE <- c(-.5, 1.5, .6, 1.2, 3)
+seTE <- c(.5, .75, .5, 1, .5)
+studyName <- c("Study 1", "Study 2", "Study 3", "Study 4", "Study 5")
+simulationResult <- getSimulationResults(TE, seTE, studyName)
+plotSimulation(simulationResult, "./highES.pdf")
+```
+
+```{r}
+TE <- c(-.5, 1.5, .6, 1.2, 2)
+seTE <- c(.5, .75, .5, 1, 1.5)
+studyName <- c("Study 1", "Study 2", "Study 3", "Study 4", "Study 5")
+simulationResult <- getSimulationResults(TE, seTE, studyName)
+plotSimulation(simulationResult, "./highVar.pdf")
+
+```
+
+
+```{r}
+TE <- c(-.5, 1.5, .6, 1.2, 3)
+seTE <- c(.5, .75, .5, 1, 1.5)
+studyName <- c("Study 1", "Study 2", "Study 3", "Study 4", "Study 5")
+simulationResult <- getSimulationResults(TE, seTE, studyName)
+plotSimulation(simulationResult, "./highBoth.pdf")
+
+```
+
+

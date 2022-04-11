@@ -1,0 +1,212 @@
+---
+title: "ThresholdVary"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(pals)
+library(cowplot)
+library(ggprism)
+library(patchwork)
+```
+
+## R Markdown
+```{r}
+#ROC Figures
+cardioROCFrame <- readRDS("/labs/khatrilab/lkalesin/Bayesian_Paper_Analysis/TB_4_ES.RDS")
+cardioROCFrame <- bind_rows(cardioROCFrame, .id = "ES")
+cardioROCFrame$ES <- str_remove_all(cardioROCFrame$ES, "N: ")
+cardioROCFrame$ES <- as.numeric(cardioROCFrame$ES)
+
+#import processed data + plot ROC plot
+tb_es <- cardioROCFrame
+tb_es$size <- NULL
+tb_es$datasetNumber <- NULL
+tb_es <- tb_es %>% pivot_longer(rocB:rocM)
+tb_es <- tb_es %>% mutate(name = ifelse(name == "rocB", "BMI", "CMI"))
+tb_es <- tb_es %>% filter(ES < 1.2)
+tb_es$ES <- as.factor(tb_es$ES)
+
+makeStars <- function(x){
+  stars <- c("****", "***", "**", "*", "ns")
+  vec <- c(0, 0.0001, 0.001, 0.01, 0.05, 1)
+  i <- findInterval(x, vec)
+  stars[i]
+}
+
+df_p_val  <- tb_es %>%
+  rstatix::group_by(ES) %>%
+  rstatix::t_test(value ~ name) %>%
+  rstatix::add_xy_position(x = "ES", dodge = 0.8)
+
+df_p_val$stars <- makeStars(df_p_val$p)
+tb_es_plot <- ggplot(tb_es, aes(ES, value)) + 
+  geom_boxplot(aes(color = name)) +
+  scale_color_manual(values=as.vector(cols25(25))) +
+  theme_cowplot() +
+  xlab("Effect Size Threshold") +
+  ylab("Validation AUC") +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
+  add_pvalue(df_p_val, 
+               xmin = "xmin", 
+               xmax = "xmax",
+               label = "stars",
+               tip.length = 0) +
+  ggtitle("TB: Effect Size Comparison") +
+  theme(legend.position = "none")
+
+```
+
+```{r}
+cardioROCFrame <- readRDS("/labs/khatrilab/lkalesin/Bayesian_Paper_Analysis/TB_4_nGenes.RDS")
+cardioROCFrame <- bind_rows(cardioROCFrame, .id = "N")
+cardioROCFrame$N <- str_remove_all(cardioROCFrame$N, "N: ")
+cardioROCFrame$N <- as.numeric(cardioROCFrame$N)
+
+#import processed data + plot ROC plot
+tb_nGenes <- cardioROCFrame
+tb_nGenes$size <- NULL
+tb_nGenes$datasetNumber <- NULL
+tb_nGenes <- tb_nGenes %>% pivot_longer(rocB:rocM)
+tb_nGenes <- tb_nGenes %>% mutate(name = ifelse(name == "rocB", "BMI", "CMI"))
+tb_nGenes$N <- as.factor(tb_nGenes$N)
+cardioROC <- ggplot(tb_nGenes, aes(N, value, color = N)) + 
+  geom_boxplot() +
+  facet_wrap(~name) +
+  scale_color_manual(values=as.vector(cols25(25))) +
+  theme_cowplot() +
+  geom_hline(yintercept = .76,linetype = "dashed", color = "grey70") +
+  xlab("Effect Size Threshold") +
+  ylab("Validation") +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
+  theme(legend.position = "none")
+
+
+makeStars <- function(x){
+  stars <- c("****", "***", "**", "*", "ns")
+  vec <- c(0, 0.0001, 0.001, 0.01, 0.05, 1)
+  i <- findInterval(x, vec)
+  stars[i]
+}
+
+df_p_val  <- tb_nGenes %>%
+  rstatix::group_by(N) %>%
+  rstatix::t_test(value ~ name) %>%
+  rstatix::add_xy_position(x = "N", dodge = 0.8)
+
+df_p_val$stars <- makeStars(df_p_val$p)
+tb_nGenes_plot <- ggplot(tb_nGenes, aes(N, value)) + 
+  geom_boxplot(aes(color = name)) +
+  scale_color_manual(values=as.vector(cols25(25))) +
+  theme_cowplot() +
+  xlab("Number of Genes in Signature (ES > .6)") +
+  ylab("Validation AUC") +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
+  add_pvalue(df_p_val, 
+               xmin = "xmin", 
+               xmax = "xmax",
+               label = "stars",
+               tip.length = 0) +
+  ggtitle("TB: Number of Genes Comparison") +
+  theme(legend.position = "none")
+
+```
+
+```{r}
+cardioROCFrame <- readRDS("/labs/khatrilab/lkalesin/Bayesian_Paper_Analysis/Cardio_4_nGenes.RDS")
+cardioROCFrame <- bind_rows(cardioROCFrame, .id = "N")
+cardioROCFrame$N <- str_remove_all(cardioROCFrame$N, "N: ")
+cardioROCFrame$N <- as.numeric(cardioROCFrame$N)
+
+#import processed data + plot ROC plot
+cardio_nGenes <- cardioROCFrame
+cardio_nGenes$size <- NULL
+cardio_nGenes$datasetNumber <- NULL
+cardio_nGenes <- cardio_nGenes %>% pivot_longer(rocB:rocM)
+cardio_nGenes <- cardio_nGenes %>% mutate(name = ifelse(name == "rocB", "BMI", "CMI"))
+cardio_nGenes$N <- as.factor(cardio_nGenes$N)
+
+
+makeStars <- function(x){
+  stars <- c("****", "***", "**", "*", "ns")
+  vec <- c(0, 0.0001, 0.001, 0.01, 0.05, 1)
+  i <- findInterval(x, vec)
+  stars[i]
+}
+
+df_p_val  <- cardio_nGenes %>%
+  rstatix::group_by(N) %>%
+  rstatix::t_test(value ~ name) %>%
+  rstatix::add_xy_position(x = "N", dodge = 0.8)
+
+df_p_val$stars <- makeStars(df_p_val$p)
+cardio_nGenes_plot <- ggplot(cardio_nGenes, aes(N, value)) + 
+  geom_boxplot(aes(color = name)) +
+  scale_color_manual(values=as.vector(cols25(25))) +
+  theme_cowplot() +
+  xlab("Number of Genes in Signature (ES > .6)") +
+  ylab("Validation AUC") +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
+  add_pvalue(df_p_val, 
+               xmin = "xmin", 
+               xmax = "xmax",
+               label = "stars",
+               tip.length = 0) +
+  ggtitle("Cardiomyopathy: Number of Genes Comparison") +
+  theme(legend.position = "none")
+
+```
+
+```{r}
+#ROC Figures
+cardioROCFrame <- readRDS("/labs/khatrilab/lkalesin/Bayesian_Paper_Analysis/Cardio_4_ES.RDS")
+cardioROCFrame <- bind_rows(cardioROCFrame, .id = "ES")
+cardioROCFrame$ES <- str_remove_all(cardioROCFrame$ES, "N: ")
+cardioROCFrame$ES <- as.numeric(cardioROCFrame$ES)
+
+#import processed data + plot ROC plot
+cardio_es <- cardioROCFrame
+cardio_es$size <- NULL
+cardio_es$datasetNumber <- NULL
+cardio_es <- cardio_es %>% pivot_longer(rocB:rocM)
+cardio_es <- cardio_es %>% mutate(name = ifelse(name == "rocB", "BMI", "CMI"))
+cardio_es <- cardio_es %>% filter(ES < 1.2)
+cardio_es$ES <- as.factor(cardio_es$ES)
+
+
+makeStars <- function(x){
+  stars <- c("****", "***", "**", "*", "ns")
+  vec <- c(0, 0.0001, 0.001, 0.01, 0.05, 1)
+  i <- findInterval(x, vec)
+  stars[i]
+}
+
+df_p_val  <- cardio_es %>%
+  rstatix::group_by(ES) %>%
+  rstatix::t_test(value ~ name) %>%
+  rstatix::add_xy_position(x = "ES", dodge = 0.8)
+
+df_p_val$stars <- makeStars(df_p_val$p)
+cardio_es_plot <- ggplot(cardio_es, aes(ES, value)) + 
+  geom_boxplot(aes(color = name)) +
+  scale_color_manual(values=as.vector(cols25(25))) +
+  theme_cowplot() +
+  xlab("Effect Size Threshold") +
+  ylab("Validation AUC") +
+  ggtitle("Cardiomyopathy: Effect Size Comparison") +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
+  add_pvalue(df_p_val, 
+               xmin = "xmin", 
+               xmax = "xmax",
+               label = "stars",
+               tip.length = 0) +
+  theme(legend.position = "none")
+```
+
+```{r}
+(tb_es_plot + cardio_es_plot) / (tb_nGenes_plot + cardio_nGenes_plot)
+ggsave("/labs/khatrilab/lkalesin/Bayesian_Paper_Analysis/Analysis/Other/Thresholds.pdf", height = 8, width = 16)
+```
+

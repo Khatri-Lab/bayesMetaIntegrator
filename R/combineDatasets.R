@@ -122,18 +122,19 @@ getCombiningModel <- function(discovery, gene, steps = 5000, burnIn = 1000, seed
       tau ~ dunif(0, 2)
       #tau ~ dgamma(0, )
     }
-    #define parameters
-    jags.data <- list("y", "se", "I")
-    # Define parameters of interest
-    jags.params <- c("tau", "mu", "MU")
-    # Set initials
-    jags.inits <- function() {
-      list("tau"=runif(1),
-           "mu"=rnorm(I)
-      )
-    }
+
   }
 
+  #define parameters
+  jags.data <- list("y", "se", "I")
+  # Define parameters of interest
+  jags.params <- c("tau", "mu", "MU")
+  # Set initials
+  jags.inits <- function() {
+    list("tau"=runif(1),
+         "mu"=rnorm(I)
+    )
+  }
   y <- as.matrix((discovery$bayesianMeta$datasetResults %>% filter(Gene == gene))$effSize)
   se <- as.matrix((discovery$bayesianMeta$datasetResults %>% filter(Gene == gene))$stdDev)
   I <- length(y)

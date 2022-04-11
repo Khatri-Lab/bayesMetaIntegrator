@@ -1,0 +1,92 @@
+---
+title: "ThresholdVariance"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+library(tidyverse)
+library(MetaIntegrator)
+library(psych)
+```
+
+
+```{r cars}
+createFilter <- function(geneObject) {
+  filter <- MetaIntegrator::tinyMetaObject$filterResults$pValueFDR0.05_es0_nStudies1_looaTRUE_hetero0
+  filter$posGeneNames <- geneObject$Gene[geneObject$ES > 0]
+  filter$negGeneNames <- geneObject$Gene[geneObject$ES < 0]
+  return(filter)
+}
+
+getWeightedAUCSim <- function(bayesianSample, metaintegratorSample, nGenes, ESin, forward, sampling) {
+  nGenes <- nGenes
+  bayesianTop <- bayesianSample %>% filter(abs(ES) > ESin)
+  bayesianTop <- bayesianTop[1:nGenes,]
+  metaIntegratorTop <- (metaintegratorSample$pooledResults %>% 
+                          filter(effectSizeFDR < .05) %>% 
+                          filter(abs(effectSize) > ESin) %>%
+                          filter(numStudies > 1) %>%
+                          arrange(effectSizeFDR))[1:nGenes,]
+  metaIntegratorTop$Gene <- rownames(metaIntegratorTop)
+  metaIntegratorTop$ES <- metaIntegratorTop$effectSize
+  
+  #create filter
+  bayesianFilter <- createFilter(bayesianTop)
+  metaintegratorFilter <- createFilter(metaIntegratorTop)
+  
+  if(!is.null(forward)){
+    bayesianFilter <- forwardSearch(forward, bayesianFilter)
+    metaintegratorFilter <- forwardSearch(forward, metaintegratorFilter)
+  }
+  #test filter
+  removeVec <- c()
+  for(dataset in 1:length(cardioSimulation$originalData)){
+    if(cardioSimulation$originalData[[dataset]]$formattedName %in% sampling) {
+      removeVec <- c(removeVec, dataset)
+    }
+  }
+  validation <- cardioSimulation
+  validation$originalData <- validation$originalData[-removeVec]
+  #print(sampling)
+  #calculate weighted AUC
+  rocDataframe <- data.frame(rocBayesian = numeric(), rocMetaIntegrator = numeric(), dataset = character(), size = numeric())
+  for(dataset in 1:length(validation$originalData)){
+    #print(validation$originalData[[dataset]]$formattedName)
+    scoreResults <- calculateScore(bayesianFilter, validation$originalData[[dataset]]) 
+    rocResBayes <- calculateROC(predictions=scoreResults, labels=validation$originalData[[dataset]]$class)
+    
+    scoreResults <- calculateScore(metaintegratorFilter, validation$originalData[[dataset]]) 
+    rocResMeta <- calculateROC(predictions=scoreResults, labels=validation$originalData[[dataset]]$class)
+  
+    sampleNum = length(validation$originalData[[dataset]]$class)
+    rocDataframe <- rbind(rocDataframe, data.frame(rocBayesian = rocResBayes$auc, rocMetaIntegrator = rocResMeta$auc, dataset = validation$originalData[[dataset]]$formattedName, size = sampleNum))
+  }
+  totalWeight <- sum(rocDataframe$size)
+  rocBayesian <- sum(rocDataframe$rocBayesian * rocDataframe$size)/totalWeight
+  rocMeta <- sum(rocDataframe$rocMetaIntegrator * rocDataframe$size)/totalWeight
+  
+  returnFrame <- data.frame(rocB = rocBayesian, rocM = rocMeta)
+}
+```
+
+```{r}
+resultList <- list()
+cardioSimulation <- readRDS("/labs/khatrilab/lkalesin/Bayesian_Paper_Analysis/Analysis/Simulation/Results/Cardio/cardio_4.RDS")
+for(nGenes in seq(.4, 1.4, .1)) {
+  resultFrame <- data.frame(rocB = numeric(), rocM = numeric(), size = numeric())
+  for(samplingNum in seq(1, length(cardioSimulation$monteCarlo$samplings))){
+      runResult <- getWeightedAUCSim(cardioSimulation$monteCarlo$samplings[[samplingNum]], cardioSimulation$monteCarlo$regularMeta[[samplingNum]], 10, nGenes, NULL, as.vector(unlist(cardioSimulation$monteCarlo$combinationsToTest[samplingNum,])))
+      #need to grab size
+      datasets <- as.vector(unname(unlist(cardioSimulation$monteCarlo$combinationsToTest[samplingNum,])))
+      ourSets <- cardioSimulation$originalData[datasets]
+      classSizes <- c()
+    for(dataset in ourSets) {classSizes <- c(classSizes, length(dataset$class))}
+      runResult$size <- geometric.mean(classSizes)
+      resultFrame <- rbind(resultFrame, runResult)
+    }
+  number <- nGenes
+  simulationName <- paste0("N: ", number)
+  resultList[[simulationName]] <- resultFrame
+}
+saveRDS(resultList, "./Cardio_4_ES.RDS")
+```

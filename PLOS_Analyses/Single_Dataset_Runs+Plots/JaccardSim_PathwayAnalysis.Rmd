@@ -1,0 +1,263 @@
+---
+title: "JaccardSim"
+output: html_document
+---
+
+```{r}
+source("./paperFunctions.R")
+library(MetaIntegrator)
+library(bayesMetaintegrator)
+library(ggrastr)
+library(pals)
+library(scales)
+library(patchwork)
+library(ReactomePA)
+library(biomaRt)
+```
+
+#do jaccard similarity
+```{r}
+#objects w/ bayesian metaintegrator run
+discoveryAsthma <- readRDS("./AsthmaFullRun.RDS")
+nStudiesThresh = 2
+jaccardSimilarityAsthma <- getJaccardPlot_FDROrder(discoveryAsthma, .05, nStudiesThresh, seq(10, 500, by = 10))
+discoveryTB <- readRDS("./TBFullRun.RDS")
+jaccardSimilarityTB <- getJaccardPlot_FDROrder(discoveryTB, .05, nStudiesThresh, seq(10, 500, by = 10))
+
+discoveryCardio <- readRDS("./CardioFullRun.RDS")
+jaccardSimilarityCardio <- getJaccardPlot_FDROrder(discoveryCardio, .05, nStudiesThresh, seq(10, 500, by = 10))
+jaccardDataFrame <- data.frame(n = jaccardSimilarityAsthma$n, Asthma = jaccardSimilarityAsthma$jaccard, Cardiomyopathy = jaccardSimilarityCardio$jaccard, Tuberculosis = jaccardSimilarityTB$jaccard)
+jaccardLong <- jaccardDataFrame %>% pivot_longer(Asthma:Tuberculosis, names_to = "Comparison")
+```
+
+#plot ggplot of jaccard similarity
+```{r}
+jaccardPlot <- ggplot(jaccardLong, aes(n, value, color = Comparison)) + geom_line(size = 2) + 
+  theme_cowplot() + 
+  ggtitle("Jaccard Similarity - FDR") + 
+  xlab("Number of Genes") +
+  ylab("Jaccard Similarity")
+ggsave("./Asthma_Final_Figures/Jaccard500Combined.pdf")
+```
+
+#next do pathway analysis for each one.
+#figure out pathway analysis here
+```{r}
+runPathwayAnalysis <- function(discovery, numberOfGenes, gsSize, pValue) {
+  nGenes = numberOfGenes
+  regular <- discovery$metaAnalysis$pooledResults %>%
+    filter(numStudies >= 2) %>%
+    arrange((abs(effectSizeFDR)))
+  
+  #filter down bayesian meta-integrator - sort by Pr0
+  bayesian <- discovery$bayesianMeta$finalResults %>%
+    arrange(abs(Pr0))
+  
+  regularGenes <- rownames(regular[1:nGenes,])
+  bayesianGenes <- bayesian[1:nGenes,]$Gene
+  
+  bayesianOnly <- bayesianGenes[!bayesianGenes %in% regularGenes]
+  regularOnly <- regularGenes[!regularGenes %in% bayesianGenes]
+  
+  ensembl <- useEnsembl(biomart = "ensembl", dataset= "hsapiens_gene_ensembl")
+  genes <- getBM(
+    attributes=c("hgnc_symbol","entrezgene_id"),
+    filters = "hgnc_symbol",
+    values = bayesianGenes,
+    mart = ensembl)
+  
+  bayesianPathwayResults <- enrichPathway(gene=genes$entrezgene_id,
+                     pvalueCutoff = pValue, minGSSize = gsSize)
+  
+  ensembl <- useEnsembl(biomart = "ensembl", dataset= "hsapiens_gene_ensembl")
+  genes <- getBM(
+    attributes=c("hgnc_symbol","entrezgene_id"),
+    filters = "hgnc_symbol",
+    values = regularGenes,
+    mart = ensembl)
+  
+  classicalPathwayResults <- enrichPathway(gene=genes$entrezgene_id,
+                     pvalueCutoff = pValue, minGSSize = gsSize)
+  
+  genes <- getBM(
+    attributes=c("hgnc_symbol","entrezgene_id"),
+    filters = "hgnc_symbol",
+    values = regularOnly,
+    mart = ensembl)
+  
+  regularOnlyResults <- enrichPathway(gene=genes$entrezgene_id,
+                     pvalueCutoff = pValue, minGSSize = gsSize)
+
+  genes <- getBM(
+    attributes=c("hgnc_symbol","entrezgene_id"),
+    filters = "hgnc_symbol",
+    values = bayesianOnly,
+    mart = ensembl)
+  
+  bayesianOnlyResults <- enrichPathway(gene=genes$entrezgene_id,
+                     pvalueCutoff = pValue, minGSSize = gsSize)
+
+  
+  pathwayResults <- list()
+  pathwayResults[[1]] <- bayesianPathwayResults
+  pathwayResults[[2]] <- classicalPathwayResults
+  pathwayResults[[3]] <- bayesianOnlyResults
+  pathwayResults[[4]] <- regularOnlyResults
+  
+  return(pathwayResults)
+}
+
+pathwayResultsCardio <- runPathwayAnalysis(discoveryCardio, 1000, 5, .2)
+pathwayResultsTB <- runPathwayAnalysis(discoveryTB, 1000, 20, .05)
+
+```
+
+```{r}
+visualizePathwayAnalysis <- function(pathwayResults, title) {
+  bayesianPathwayResults <- pathwayResults[[1]]
+  classicalPathwayResults <- pathwayResults[[2]]
+  classicalOnly <- pathwayResults[[4]]
+  bayesianOnly <- pathwayResults[[3]]
+
+  bayesianFiltered <- bayesianPathwayResults@result %>% filter(qvalue < bayesianPathwayResults@qvalueCutoff) %>% dplyr::select(Description, qvalue)
+bayesianFiltered$analysis <- "BMI"
+
+classicalFiltered <- classicalPathwayResults@result %>% filter(qvalue < classicalPathwayResults@qvalueCutoff) %>% dplyr::select(Description, qvalue)
+classicalFiltered$analysis <- "CMI"
+
+classicalOnlyFiltered <- classicalOnly@result %>% filter(qvalue < classicalOnly@qvalueCutoff) %>% dplyr::select(Description, qvalue)
+classicalOnlyFiltered$analysis <- "CMI_only"
+
+#bayesianOnlyFiltereed <- bayesianOnly@result %>% filter(qvalue < bayesianOnly@qvalueCutoff) %>% dplyr::select(Description, qvalue)
+#bayesianOnlyFiltereed$analysis <- "BMI_only"
+
+
+test <- rbind(bayesianFiltered, classicalFiltered, classicalOnlyFiltered)
+combinedDot <- ggplot(test, aes(y = factor(Description),
+             x = factor(analysis))) +        ## global aes
+  #geom_tile() +         ## to get the rect filled
+  geom_point(aes(colour = qvalue, 
+                   size = qvalue))  +    ## geom_point for circle illusion
+  scale_color_gradient(low = "blue",  
+                       high = "red")+       ## color of the corresponding aes
+  scale_size(range = c(1, 5))+             ## to tune the size of circles
+  theme_cowplot() +
+  theme(legend.position = "none") +
+  xlab("Analysis") + 
+  ggtitle(title) +
+  theme(axis.title.y=element_blank()) +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1))
+  return(combinedDot)
+}
+pTB <- visualizePathwayAnalysis(pathwayResultsTB, "Tuberculosis")
+ggsave("./Asthma_Final_Figures/TBPathway.pdf", pTB, height = 10, width = 10)
+pCardio <- visualizePathwayAnalysis(pathwayResultsCardio, "Cardiomyopathy")
+ggsave("./Asthma_Final_Figures/CardioPathway.pdf", pCardio, height = 10, width = 10)
+
+```
+
+```{r}
+library(ReactomePA)
+library(biomaRt)
+discovery <- readRDS("/labs/khatrilab/lkalesin/Bayesian_Paper_Analysis/Data/AsthmaFullRun.RDS")
+nGenes = 500
+regular <- discovery$metaAnalysis$pooledResults %>%
+  filter(numStudies >= 2) %>%
+  arrange((abs(effectSizeFDR)))
+
+#filter down bayesian meta-integrator - sort by Pr0
+bayesian <- discovery$bayesianMeta$finalResults %>%
+  arrange(abs(Pr0))
+
+regularGenes <- rownames(regular[1:nGenes,])
+bayesianGenes <- bayesian[1:nGenes,]$Gene
+
+bayesianOnly <- bayesianGenes[!bayesianGenes %in% regularGenes]
+regularOnly <- regularGenes[!regularGenes %in% bayesianGenes]
+
+
+ensembl <- useEnsembl(biomart = "ensembl", dataset= "hsapiens_gene_ensembl")
+genes <- getBM(
+  attributes=c("hgnc_symbol","entrezgene_id"),
+  filters = "hgnc_symbol",
+  values = bayesianGenes,
+  mart = ensembl)
+
+bayesianPathwayResults <- enrichPathway(gene=genes$entrezgene_id,
+                   pvalueCutoff = .2, minGSSize = 10)
+filename = paste0(rootPath, "bayesianPathway.pdf")
+pdf(filename, height = 10, width = 6)
+bayesianPathway = dotplot(bayesianPathwayResults, showCategory=15) + theme_cowplot() + theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+dev.off()
+
+library(biomaRt)
+ensembl <- useEnsembl(biomart = "ensembl", dataset= "hsapiens_gene_ensembl")
+genes <- getBM(
+  attributes=c("hgnc_symbol","entrezgene_id"),
+  filters = "hgnc_symbol",
+  values = regularGenes,
+  mart = ensembl)
+classicalPathwayResults <- enrichPathway(gene=genes$entrezgene_id,
+                   pvalueCutoff = .2, minGSSize = 10)
+
+genes <- getBM(
+    attributes=c("hgnc_symbol","entrezgene_id"),
+    filters = "hgnc_symbol",
+    values = regularOnly,
+    mart = ensembl)
+  
+regularOnlyResults <- enrichPathway(gene=genes$entrezgene_id,
+                     pvalueCutoff = .2, minGSSize = 10)
+
+genes <- getBM(
+    attributes=c("hgnc_symbol","entrezgene_id"),
+    filters = "hgnc_symbol",
+    values = bayesianOnly,
+    mart = ensembl)
+  
+bayesianOnlyResults <- enrichPathway(gene=genes$entrezgene_id,
+                    pvalueCutoff = .2, minGSSize = 10)
+
+bayesianFiltered <- bayesianPathwayResults@result %>% filter(qvalue < bayesianPathwayResults@qvalueCutoff) %>% dplyr::select(Description, qvalue)
+bayesianFiltered$analysis <- "BMI"
+
+classicalFiltered <- classicalPathwayResults@result %>% filter(qvalue < classicalPathwayResults@qvalueCutoff) %>% dplyr::select(Description, qvalue)
+classicalFiltered$analysis <- "CMI"
+
+classicalOnlyFiltered <- regularOnlyResults@result %>% filter(qvalue < regularOnlyResults@qvalueCutoff) %>% dplyr::select(Description, qvalue)
+classicalOnlyFiltered$analysis <- "CMI_only"
+
+bayesianOnlyFiltered <- bayesianOnlyResults@result %>% filter(qvalue < bayesianOnlyResults@qvalueCutoff) %>% dplyr::select(Description, qvalue)
+bayesianOnlyFiltered$analysis <- "BMI_only"
+
+test <- rbind(bayesianFiltered, classicalFiltered, bayesianOnlyFiltered, classicalOnlyFiltered)
+
+test$Description[test$Description == "Defective GALNT3 causes familial hyperphosphatemic tumoral calcinosis (HFTC)"] <- "Defective GALNT3 causes HFTC"
+test$Description[test$Description == "Defective GALNT12 causes colorectal cancer 1 (CRCS1)"] <- "Defective GALNT3 causes CRCS1"
+test$Description[test$Description == "Defective C1GALT1C1 causes Tn polyagglutination syndrome (TNPS)"] <- "Defective C1GALT1C1 causes TNPS"
+test$Description[test$Description == "Transport of bile salts and organic acids, metal ions and amine compounds"] <- "Transport of bile salts, organic acids, metal ions, amines"
+
+
+
+pAsthma <- ggplot(test, aes(y = factor(Description),
+             x = factor(analysis))) +        ## global aes
+  #geom_tile() +         ## to get the rect filled
+  geom_point(aes(colour = qvalue, 
+                   size = qvalue))  +    ## geom_point for circle illusion
+  scale_color_gradient(low = "blue",  
+                       high = "red")+       ## color of the corresponding aes
+  scale_size(range = c(1, 5))+             ## to tune the size of circles
+  theme_cowplot() +
+  theme(legend.position = "none") +
+  xlab("Analysis") + 
+  ggtitle("Asthma") + 
+  theme(axis.title.y=element_blank()) +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1))
+
+```
+
+```{r}
+pCardio + pTB + pAsthma
+ggsave("./Asthma_Final_Figures/PathwayAnalysisCombined_onlyCategories.pdf", width = 20, height = 10)
+```
+

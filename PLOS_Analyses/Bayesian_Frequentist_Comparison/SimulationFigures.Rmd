@@ -1,0 +1,483 @@
+---
+title: "SimulationFigures"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+library(tidyverse)
+library(cowplot)
+library(pals)
+library(patchwork)
+library(rstatix)
+library(ggprism)
+```
+
+```{r}
+filePath = "./Results/Cardio/cardio_"
+prefix = "cardioROC"
+
+#import cardio data
+cardioSimulation2 <- readRDS(paste0(filePath, "2.RDS"))
+cardioSimulation3 <- readRDS(paste0(filePath, "3.RDS"))
+cardioSimulation4 <- readRDS(paste0(filePath, "4.RDS"))
+cardioSimulation5 <- readRDS(paste0(filePath, "5.RDS"))
+cardioSimulation6 <- readRDS(paste0(filePath, "6.RDS"))
+cardioSimulation7 <- readRDS(paste0(filePath, "7.RDS"))
+cardioSimulation8 <- readRDS(paste0(filePath, "8.RDS"))
+cardioSimulation9 <- readRDS(paste0(filePath, "9.RDS"))
+
+cardioSimList <- list()
+cardioSimList$cardioSimulation2 <- cardioSimulation2
+cardioSimList$cardioSimulation3 <- cardioSimulation3
+cardioSimList$cardioSimulation4 <- cardioSimulation4
+cardioSimList$cardioSimulation5 <- cardioSimulation5
+cardioSimList$cardioSimulation6 <- cardioSimulation6
+cardioSimList$cardioSimulation7 <- cardioSimulation7
+cardioSimList$cardioSimulation8 <- cardioSimulation8
+cardioSimList$cardioSimulation9 <- cardioSimulation9
+
+```
+
+```{r}
+filePath = "./Results/TB/TB_"
+prefix = "tbROC"
+
+#import cardio data
+tbSimulation2 <- readRDS(paste0(filePath, "2.RDS"))
+tbSimulation3 <- readRDS(paste0(filePath, "3.RDS"))
+tbSimulation4 <- readRDS(paste0(filePath, "4.RDS"))
+tbSimulation5 <- readRDS(paste0(filePath, "5.RDS"))
+tbSimulation6 <- readRDS(paste0(filePath, "6.RDS"))
+tbSimulation7 <- readRDS(paste0(filePath, "7.RDS"))
+tbSimulation8 <- readRDS(paste0(filePath, "8.RDS"))
+tbSimulation9 <- readRDS(paste0(filePath, "9.RDS"))
+tbSimulation10 <- readRDS(paste0(filePath, "10.RDS"))
+tbSimulation11 <- readRDS(paste0(filePath, "11.RDS"))
+tbSimulation12 <- readRDS(paste0(filePath, "12.RDS"))
+tbSimulation13 <- readRDS(paste0(filePath, "13.RDS"))
+tbSimulation14 <- readRDS(paste0(filePath, "14.RDS"))
+
+
+tbSimList <- list()
+tbSimList$tbSimulation2 <- tbSimulation2
+tbSimList$tbSimulation3 <- tbSimulation3
+tbSimList$tbSimulation4 <- tbSimulation4
+tbSimList$tbSimulation5 <- tbSimulation5
+tbSimList$tbSimulation6 <- tbSimulation6
+tbSimList$tbSimulation7 <- tbSimulation7
+tbSimList$tbSimulation8 <- tbSimulation8
+tbSimList$tbSimulation9 <- tbSimulation9
+tbSimList$tbSimulation10 <- tbSimulation10
+tbSimList$tbSimulation11 <- tbSimulation11
+tbSimList$tbSimulation12 <- tbSimulation12
+tbSimList$tbSimulation13 <- tbSimulation13
+tbSimList$tbSimulation14 <- tbSimulation14
+
+
+```
+
+```{r}
+#ROC Figures
+cardioROCFrame <- readRDS("./validation_cardio_ES6.RDS")
+#import processed data + plot ROC plot
+cardioROCFrame <- cardioROCFrame
+cardioROCFrame$size <- NULL
+cardioROCFrame$datasetNumber <- NULL
+cardioROCFrame <- cardioROCFrame %>% pivot_longer(rocB:rocM)
+cardioROCFrame <- cardioROCFrame %>% mutate(name = ifelse(name == "rocB", "BMI", "CMI"))
+cardioROC <- ggplot(cardioROCFrame, aes(N, value, color = N)) + 
+  geom_boxplot() +
+  facet_wrap(~name) +
+  scale_color_manual(values=as.vector(cols25(25))) +
+  theme_cowplot() +
+  geom_hline(yintercept = .88,linetype = "dashed", color = "grey70") +
+  xlab("Number of Datasets") +
+  ylab("Validation") +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
+  theme(legend.position = "none")
+
+
+makeStars <- function(x){
+  stars <- c("****", "***", "**", "*", "ns")
+  vec <- c(0, 0.0001, 0.001, 0.01, 0.05, 1)
+  i <- findInterval(x, vec)
+  stars[i]
+}
+
+df_p_val  <- cardioROCFrame %>%
+  rstatix::group_by(N) %>%
+  rstatix::t_test(value ~ name) %>%
+  rstatix::add_xy_position(x = "N", dodge = 0.8)
+
+df_p_val$stars <- makeStars(df_p_val$p)
+cardioROC <- ggplot(cardioROCFrame, aes(N, value)) + 
+  geom_boxplot(aes(color = name)) +
+  scale_color_manual(values=as.vector(cols25(25))) +
+  theme_cowplot() +
+  xlab("Number of Datasets") +
+  ylab("Validation AUC") +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
+  add_pvalue(df_p_val, 
+               xmin = "xmin", 
+               xmax = "xmax",
+               label = "stars",
+               tip.length = 0) +
+  theme(legend.position = "none")
+
+  
+
+
+tbROCFrame <- readRDS("./tb20ROCvalidation_ES6.RDS")
+tbROCFrame <- tbROCFrame[complete.cases(tbROCFrame), ]
+#import processed data + plot ROC plot
+tbROCFrame$size <- NULL
+tbROCFrame$datasetNumber <- NULL
+tbROCFrame <- tbROCFrame %>% pivot_longer(rocB:rocM)
+tbROCFrame <- tbROCFrame %>% mutate(name = ifelse(name == "rocB", "BMI", "CMI"))
+tbROCFrame$N <- factor(tbROCFrame$N, levels = c("N: 2", "N: 3", "N: 4", "N: 5", "N: 6", "N: 7", "N: 8", "N: 9", "N: 10", "N: 11", "N: 12", "N: 13", "N: 14"))
+
+tbROC <- ggplot(tbROCFrame, aes(N, value, color = N)) + 
+  geom_boxplot() +
+  facet_wrap(~name) +
+  scale_color_manual(values=as.vector(cols25(25))) +
+  theme_cowplot() +
+  geom_hline(yintercept = .801,linetype = "dashed", color = "grey70") +
+  xlab("Number of Datasets") +
+  ylab("Validation AUC") +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
+  theme(legend.position = "none")
+df_p_val  <- tbROCFrame %>%
+  rstatix::group_by(N) %>%
+  rstatix::t_test(value ~ name) %>%
+  rstatix::add_xy_position(x = "N", dodge = 0.8)
+df_p_val$stars <- makeStars(df_p_val$p)
+tbROCFrame$N <- as.factor(tbROCFrame$N )
+tbROC <- ggplot(tbROCFrame, aes(N, value)) + 
+  geom_boxplot(aes(color = name)) +
+  scale_color_manual(values=as.vector(cols25(25))) +
+  theme_cowplot() +
+  xlab("Number of Datasets") +
+  ylab("Validation AUC") +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
+  add_pvalue(df_p_val, 
+               xmin = "xmin", 
+               xmax = "xmax",
+               label = "stars",
+               tip.length = 0) +
+  theme(legend.position = "none")
+
+
+```
+
+
+
+```{r}
+getTau <- function(bayesianSample, metaintegratorSample, nGenes, bayesian = FALSE) {
+  nGenes <- nGenes
+  bayesianTop <- bayesianSample[1:nGenes,]
+  metaIntegratorTop <- (metaintegratorSample$pooledResults %>% filter(numStudies > 1) %>%
+    arrange(effectSizeFDR))[1:nGenes,]
+  metaIntegratorTop$Gene <- rownames(metaIntegratorTop)
+  metaIntegratorTop$ES <- metaIntegratorTop$effectSize
+  
+  if(bayesian == FALSE){
+    bayesianTau <- mean((metaintegratorSample$pooledResults[bayesianTop$Gene,])$tauSquared)
+    metaIntegratorTau <- mean((metaintegratorSample$pooledResults[metaIntegratorTop$Gene,])$tauSquared)
+  } else{
+    bayesianTau <- mean(bayesianSample[bayesianSample$Gene %in% bayesianTop$Gene,]$Tau)
+    metaIntegratorTau <- mean(bayesianSample[bayesianSample$Gene %in% metaIntegratorTop$Gene,]$Tau)
+
+  }
+
+  returnFrame <- data.frame(bayesianTau = bayesianTau, metaintegratorTau = metaIntegratorTau)
+}
+
+"geometric.mean" <- 
+function(x,na.rm=TRUE)
+{ 
+exp(mean(log(x),na.rm=na.rm)) }
+
+resultList <- list()
+for(i in seq(1, length(cardioSimList))){
+  cardioSimulation <- cardioSimList[[i]]
+  resultFrame <- data.frame(bayesianTau = numeric(), metaintegratorTau = numeric(), size = numeric())
+  for(samplingNum in seq(1, length(cardioSimulation$monteCarlo$samplings))){
+    runResult <- getTau(cardioSimulation$monteCarlo$samplings[[samplingNum]], cardioSimulation$monteCarlo$regularMeta[[samplingNum]], 10, TRUE)
+    #need to grab size
+    datasets <- as.vector(unname(unlist(cardioSimulation$monteCarlo$combinationsToTest[samplingNum,])))
+    ourSets <- cardioSimulation$originalData[datasets]
+    classSizes <- c()
+    for(dataset in ourSets) {
+      classSizes <- c(classSizes, length(dataset$class))}
+      runResult$size <- geometric.mean(classSizes)
+      resultFrame <- rbind(resultFrame, runResult)
+  }
+number <- i + 1
+simulationName <- paste0("N: ", number)
+resultList[[simulationName]] <- resultFrame
+}
+
+#first - add N
+resultList$`N: 2`$datasetNumber <- 2
+resultList$`N: 3`$datasetNumber <- 3
+resultList$`N: 4`$datasetNumber <- 4
+resultList$`N: 5`$datasetNumber <- 5
+resultList$`N: 6`$datasetNumber <- 6
+resultList$`N: 7`$datasetNumber <- 7
+test <- bind_rows(resultList, .id = "N")
+testLong <- test
+testLong$size <- NULL
+testLong$datasetNumber <- NULL
+cardioTauFrame <- testLong %>% pivot_longer(bayesianTau:metaintegratorTau)
+cardioTauFrame <- cardioTauFrame %>% mutate(name = ifelse(name == "bayesianTau", "BMI", "CMI"))
+
+cardioTau <- ggplot(cardioTauFrame, aes(N, value, color = N)) + 
+  geom_boxplot() +
+  facet_wrap(~name) +
+  scale_color_manual(values=as.vector(cols25(25))) +
+  theme_cowplot() +
+  xlab("Number of Datasets") +
+  ylab("Tau") +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
+  theme(legend.position = "none")
+
+df_p_val  <- cardioTauFrame %>%
+  rstatix::group_by(N) %>%
+  rstatix::t_test(value ~ name) %>%
+  rstatix::add_xy_position(x = "N", dodge = 0.8)
+df_p_val$stars <- makeStars(df_p_val$p)
+cardioTau <- ggplot(cardioTauFrame, aes(N, value)) + 
+  geom_boxplot(aes(color = name)) +
+  scale_color_manual(values=as.vector(cols25(25))) +
+  theme_cowplot() +
+  xlab("Number of Datasets") +
+  ylab("Tau") +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
+  add_pvalue(df_p_val, 
+               xmin = "xmin", 
+               xmax = "xmax",
+               label = "stars",
+               tip.length = 0) +
+  theme(legend.position = "none")
+
+
+resultList <- list()
+for(i in seq(1, length(tbSimList))){
+  tbSimulation <- tbSimList[[i]]
+  resultFrame <- data.frame(bayesianTau = numeric(), metaintegratorTau = numeric(), size = numeric())
+  for(samplingNum in seq(1, length(tbSimulation$monteCarlo$samplings))){
+    runResult <- getTau(tbSimulation$monteCarlo$samplings[[samplingNum]], tbSimulation$monteCarlo$regularMeta[[samplingNum]], 10, TRUE)
+    #need to grab size
+    datasets <- as.vector(unname(unlist(tbSimulation$monteCarlo$combinationsToTest[samplingNum,])))
+    ourSets <- tbSimulation$originalData[datasets]
+    classSizes <- c()
+    for(dataset in ourSets) {
+      classSizes <- c(classSizes, length(dataset$class))}
+      runResult$size <- geometric.mean(classSizes)
+      resultFrame <- rbind(resultFrame, runResult)
+  }
+number <- i + 1
+simulationName <- paste0("N: ", number)
+resultList[[simulationName]] <- resultFrame
+}
+
+#first - add N
+resultList$`N: 2`$datasetNumber <- 2
+resultList$`N: 3`$datasetNumber <- 3
+resultList$`N: 4`$datasetNumber <- 4
+resultList$`N: 5`$datasetNumber <- 5
+resultList$`N: 6`$datasetNumber <- 6
+resultList$`N: 7`$datasetNumber <- 7
+resultList$`N: 8`$datasetNumber <- 8
+
+
+test <- bind_rows(resultList, .id = "N")
+testLong <- test
+testLong$size <- NULL
+testLong$datasetNumber <- NULL
+tbTauFrame <- testLong %>% pivot_longer(bayesianTau:metaintegratorTau)
+tbTauFrame <- tbTauFrame %>% mutate(name = ifelse(name == "bayesianTau", "BMI", "CMI"))
+tbTauFrame$N <- factor(tbTauFrame$N, levels = c("N: 2", "N: 3", "N: 4", "N: 5", "N: 6", "N: 7", "N: 8", "N: 9", "N: 10", "N: 11", "N: 12", "N: 13", "N: 14"))
+
+tbTau <- ggplot(tbTauFrame, aes(N, value, color = N)) + 
+  geom_boxplot() +
+  facet_wrap(~name) +
+  scale_color_manual(values=as.vector(cols25(25))) +
+  theme_cowplot() +
+  xlab("Number of Datasets") +
+  ylab("Tau") +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
+  theme(legend.position = "none")
+
+df_p_val  <- tbTauFrame %>%
+  rstatix::group_by(N) %>%
+  rstatix::t_test(value ~ name) %>%
+  rstatix::add_xy_position(x = "N", dodge = 0.8)
+df_p_val$stars <- makeStars(df_p_val$p)
+tbTau <- ggplot(tbTauFrame, aes(N, value)) + 
+  geom_boxplot(aes(color = name)) +
+  scale_color_manual(values=as.vector(cols25(25))) +
+  theme_cowplot() +
+  xlab("Number of Datasets") +
+  ylab("Tau") +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
+  add_pvalue(df_p_val, 
+               xmin = "xmin", 
+               xmax = "xmax",
+               label = "stars",
+               tip.length = 0) +
+  theme(legend.position = "none")
+
+```
+
+```{r}
+getES <- function(bayesianSample, metaintegratorSample, nGenes, forward) {
+  nGenes <- nGenes
+  bayesianTop <- bayesianSample[1:nGenes,]
+  metaIntegratorTop <- (metaintegratorSample$pooledResults %>% filter(effectSizeFDR < .05) %>% filter(numStudies > 1) %>%
+    arrange(effectSizeFDR))[1:nGenes,]
+  metaIntegratorTop$Gene <- rownames(metaIntegratorTop)
+  metaIntegratorTop$ES <- metaIntegratorTop$effectSize
+  
+  bayesianES <- mean(abs((metaintegratorSample$pooledResults[bayesianTop$Gene,])$effectSize))
+  metaIntegratorES <- mean(abs((metaintegratorSample$pooledResults[metaIntegratorTop$Gene,])$effectSize))
+
+  returnFrame <- data.frame(bayesianES = bayesianES, metaIntegratorES = metaIntegratorES)
+}
+
+resultList <- list()
+for(i in seq(1, length(cardioSimList))){
+  cardioSimulation <- cardioSimList[[i]]
+  resultFrame <- data.frame(bayesianES = numeric(), metaIntegratorES = numeric(), size = numeric())
+  for(samplingNum in seq(1, length(cardioSimulation$monteCarlo$samplings))){
+    runResult <- getES(cardioSimulation$monteCarlo$samplings[[samplingNum]], cardioSimulation$monteCarlo$regularMeta[[samplingNum]], 10, NULL)
+    #need to grab size
+    datasets <- as.vector(unname(unlist(cardioSimulation$monteCarlo$combinationsToTest[samplingNum,])))
+    ourSets <- cardioSimulation$originalData[datasets]
+    classSizes <- c()
+    for(dataset in ourSets) {classSizes <- c(classSizes, length(dataset$class))}
+    runResult$size <- geometric.mean(classSizes)
+    resultFrame <- rbind(resultFrame, runResult)
+  }
+number <- i + 1
+simulationName <- paste0("N: ", number)
+resultList[[simulationName]] <- resultFrame
+}
+#first - add N
+resultList$`N: 2`$datasetNumber <- 2
+resultList$`N: 3`$datasetNumber <- 3
+resultList$`N: 4`$datasetNumber <- 4
+resultList$`N: 5`$datasetNumber <- 5
+resultList$`N: 6`$datasetNumber <- 6
+resultList$`N: 7`$datasetNumber <- 7
+
+test <- bind_rows(resultList, .id = "N")
+
+testLong <- test
+testLong$size <- NULL
+testLong$datasetNumber <- NULL
+testLong <- testLong %>% pivot_longer(bayesianES:metaIntegratorES)
+cardioESFrame <- testLong %>% mutate(name = ifelse(name == "bayesianES", "BMI", "CMI"))
+
+cardioES <- ggplot(cardioESFrame, aes(N, value, color = N)) + 
+  geom_boxplot() +
+  facet_wrap(~name) +
+  scale_color_manual(values=as.vector(cols25(25))) +
+  theme_cowplot() +
+  xlab("Number of Datasets") +
+  ylab("ES") +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
+  theme(legend.position = "none")
+
+df_p_val  <- cardioESFrame %>%
+  rstatix::group_by(N) %>%
+  rstatix::t_test(value ~ name) %>%
+  rstatix::add_xy_position(x = "N", dodge = 0.8)
+df_p_val$stars <- makeStars(df_p_val$p)
+cardioES <- ggplot(cardioESFrame, aes(N, value)) + 
+  geom_boxplot(aes(color = name)) +
+  scale_color_manual(values=as.vector(cols25(25))) +
+  theme_cowplot() +
+  xlab("Number of Datasets") +
+  ylab("ES") +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
+  add_pvalue(df_p_val, 
+               xmin = "xmin", 
+               xmax = "xmax",
+               label = "stars",
+               tip.length = 0) +
+  theme(legend.position = "none")
+
+resultList <- list()
+for(i in seq(1, length(tbSimList))){
+  tbSimulation <- tbSimList[[i]]
+  resultFrame <- data.frame(bayesianES = numeric(), metaIntegratorES = numeric(), size = numeric())
+  for(samplingNum in seq(1, length(tbSimulation$monteCarlo$samplings))){
+    runResult <- getES(tbSimulation$monteCarlo$samplings[[samplingNum]], tbSimulation$monteCarlo$regularMeta[[samplingNum]], 10, NULL)
+    #need to grab size
+    datasets <- as.vector(unname(unlist(tbSimulation$monteCarlo$combinationsToTest[samplingNum,])))
+    ourSets <- tbSimulation$originalData[datasets]
+    classSizes <- c()
+    for(dataset in ourSets) {classSizes <- c(classSizes, length(dataset$class))}
+    runResult$size <- geometric.mean(classSizes)
+    resultFrame <- rbind(resultFrame, runResult)
+  }
+number <- i + 1
+simulationName <- paste0("N: ", number)
+resultList[[simulationName]] <- resultFrame
+}
+#first - add N
+resultList$`N: 2`$datasetNumber <- 2
+resultList$`N: 3`$datasetNumber <- 3
+resultList$`N: 4`$datasetNumber <- 4
+resultList$`N: 5`$datasetNumber <- 5
+resultList$`N: 6`$datasetNumber <- 6
+resultList$`N: 7`$datasetNumber <- 7
+resultList$`N: 8`$datasetNumber <- 8
+test <- bind_rows(resultList, .id = "N")
+
+testLong <- test
+testLong$size <- NULL
+testLong$datasetNumber <- NULL
+testLong <- testLong %>% pivot_longer(bayesianES:metaIntegratorES)
+tbESFrame <- testLong %>% mutate(name = ifelse(name == "bayesianES", "BMI", "CMI"))
+tbESFrame$N <- factor(tbESFrame$N, levels = c("N: 2", "N: 3", "N: 4", "N: 5", "N: 6", "N: 7", "N: 8", "N: 9", "N: 10", "N: 11", "N: 12", "N: 13", "N: 14"))
+
+tbES <- ggplot(tbESFrame, aes(N, value, color = N)) + 
+  geom_boxplot() +
+  facet_wrap(~name) +
+  scale_color_manual(values=as.vector(cols25(25))) +
+  theme_cowplot() +
+  xlab("Number of Datasets") +
+  ylab("ES") +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
+  theme(legend.position = "none")
+
+df_p_val  <- tbESFrame %>%
+  rstatix::group_by(N) %>%
+  rstatix::t_test(value ~ name) %>%
+  rstatix::add_xy_position(x = "N", dodge = 0.8)
+df_p_val$stars <- makeStars(df_p_val$p)
+tbES <- ggplot(tbESFrame, aes(N, value)) + 
+  geom_boxplot(aes(color = name)) +
+  scale_color_manual(values=as.vector(cols25(25))) +
+  theme_cowplot() +
+  xlab("Number of Datasets") +
+  ylab("ES") +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
+  add_pvalue(df_p_val, 
+               xmin = "xmin", 
+               xmax = "xmax",
+               label = "stars",
+               tip.length = 0) +
+  theme(legend.position = "none")
+  
+
+```
+
+
+```{r}
+(cardioROC + tbROC) /  (cardioTau + tbTau) / (cardioES + tbES) & plot_layout(guides = "collect")
+ggsave("./combined_boxplots_tb_noLegend_new.pdf", height = 20, width = 10)
+```
+

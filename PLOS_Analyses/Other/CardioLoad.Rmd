@@ -1,0 +1,82 @@
+---
+title: "Lung_Process"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+library(MetaIntegrator)
+```
+
+```{r}
+gses <- c("GSE1145", "GSE1869", "GSE3585", "GSE4172", "GSE5406", "GSE9800", "GSE17800", "GSE21610", "GSE29819", "GSE36961", "GSE42955", "GSE43435", "GSE52601", "GSE57338")
+cardio <- MetaIntegrator::getGEOData(gses)
+cardiomyopathy_GEO <- readRDS("[outputpath]")
+```
+
+```{r}
+#cleanup!! Datasets to copy: GSE1145, 21610, 52601, 57338, 43435
+cardio$originalData$GSE1145_GPL570 <- cardiomyopathy_GEO$GSE1145_GPL570
+names(cardio$originalData$GSE1145_GPL570$class) <- rownames(cardio$originalData$GSE1145_GPL570$pheno)
+MetaIntegrator::checkDataObject(cardio$originalData$GSE1145_GPL570, "Dataset")
+
+cardio$originalData$GSE1145_GPL8300 <- NULL
+
+cardio$originalData$GSE1869$class <- (!grepl("Unused donor heart", cardio$originalData$GSE1869$pheno$description))*1
+names(cardio$originalData$GSE1869$class) <- rownames(cardio$originalData$GSE1869$pheno)
+MetaIntegrator::checkDataObject(cardio$originalData$GSE1869, "Dataset")
+
+cardio$originalData$GSE3585$class <- (!grepl("Non failing", cardio$originalData$GSE3585$pheno$characteristics_ch1))*1
+names(cardio$originalData$GSE3585$class) <- rownames(cardio$originalData$GSE3585$pheno)
+MetaIntegrator::checkDataObject(cardio$originalData$GSE3585, "Dataset")
+
+cardio$originalData$GSE4172$class <- (!grepl("healthy control", cardio$originalData$GSE4172$pheno$source_name_ch1))*1
+names(cardio$originalData$GSE4172$class) <- rownames(cardio$originalData$GSE4172$pheno)
+MetaIntegrator::checkDataObject(cardio$originalData$GSE4172, "Dataset")
+
+cardio$originalData$GSE5406$class <- (!grepl("unused donor heart with normal LV function", cardio$originalData$GSE5406$pheno$source_name_ch1))*1
+names(cardio$originalData$GSE5406$class) <- rownames(cardio$originalData$GSE5406$pheno)
+MetaIntegrator::checkDataObject(cardio$originalData$GSE5406, "Dataset")
+
+cardio$originalData$GSE9800$class <- (grepl("Left ventricular", cardio$originalData$GSE9800$pheno$characteristics_ch1))*1
+names(cardio$originalData$GSE9800$class) <- rownames(cardio$originalData$GSE9800$pheno)
+MetaIntegrator::checkDataObject(cardio$originalData$GSE9800, "Dataset")
+
+cardio$originalData$GSE17800$class <- (grepl("IA/IgG_baseline", cardio$originalData$GSE17800$pheno$source_name_ch1))*1
+names(cardio$originalData$GSE17800$class) <- rownames(cardio$originalData$GSE17800$pheno)
+MetaIntegrator::checkDataObject(cardio$originalData$GSE17800, "Dataset")
+
+cardio$originalData$GSE21610$class <- (!grepl("disease status: none", cardio$originalData$GSE21610$pheno$characteristics_ch1.3))*1
+names(cardio$originalData$GSE21610$class) <- rownames(cardio$originalData$GSE21610$pheno)
+MetaIntegrator::checkDataObject(cardio$originalData$GSE21610, "Dataset")
+
+cardio$originalData$GSE29819$class <- (!grepl("indication: Non-Failing", cardio$originalData$GSE29819$pheno$characteristics_ch1.1))*1
+names(cardio$originalData$GSE29819$class) <- rownames(cardio$originalData$GSE29819$pheno)
+MetaIntegrator::checkDataObject(cardio$originalData$GSE29819, "Dataset")
+
+cardio$originalData$GSE36961$class <- (!grepl("cardiac tissue, control", cardio$originalData$GSE36961$pheno$source_name_ch1))*1
+names(cardio$originalData$GSE36961$class) <- rownames(cardio$originalData$GSE36961$pheno)
+MetaIntegrator::checkDataObject(cardio$originalData$GSE36961, "Dataset")
+
+cardio$originalData$GSE42955$class <- (!grepl("Normal heart", cardio$originalData$GSE42955$pheno$source_name_ch1))*1
+names(cardio$originalData$GSE42955$class) <- rownames(cardio$originalData$GSE42955$pheno)
+MetaIntegrator::checkDataObject(cardio$originalData$GSE42955, "Dataset")
+
+cardio$originalData$GSE43435_GPL16284 <- NULL
+
+cardio$originalData$GSE43435_GPL15338 <- cardiomyopathy_GEO$GSE43435
+names(cardio$originalData$GSE43435_GPL15338$class) <- rownames(cardio$originalData$GSE43435_GPL15338$pheno)
+MetaIntegrator::checkDataObject(cardio$originalData$GSE43435_GPL15338, "Dataset")
+
+cardio$originalData$GSE52601 <- cardiomyopathy_GEO$GSE52601
+names(cardio$originalData$GSE52601$class) <- rownames(cardio$originalData$GSE52601$pheno)
+MetaIntegrator::checkDataObject(cardio$originalData$GSE52601, "Dataset")
+
+cardio$originalData$GSE57338 <- cardiomyopathy_GEO$GSE57338
+names(cardio$originalData$GSE57338$class) <- rownames(cardio$originalData$GSE57338$pheno)
+MetaIntegrator::checkDataObject(cardio$originalData$GSE57338, "Dataset")
+
+#set weird formatted names
+cardio$originalData$GSE43435_GPL15338$formattedName <- "GSE43435"
+cardio$originalData$GSE52601$formattedName <- "GSE52601"
+cardio$originalData$GSE57338$formattedName <- "GSE57338"
+```
