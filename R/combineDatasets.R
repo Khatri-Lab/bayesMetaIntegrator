@@ -73,7 +73,7 @@ combineDatasets <- function(discovery, steps = 5000, burnIn = 1000, seedNum = 42
 
   for(i in (1:length(metaAnalysisList))) {
     gene = as.character(validGenes[i])
-    names <- as.vector(discovery$bayesianMeta$datasetResults %>% filter(Gene == gene) %>% dplyr::select(name))[,1]
+    names <- as.vector(discovery$bayesianMeta$datasetResults %>% filter(Gene == gene) %>% dplyr::select(name))[[1]]
     discovery$bayesianMeta$pooledResultsDetailed[[gene]] <- metaAnalysisList[[i]]
     rownames(discovery$bayesianMeta$pooledResultsDetailed[[gene]])[3:(3+length(names)-1)] <- names
   }
